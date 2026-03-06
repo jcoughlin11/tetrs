@@ -17,6 +17,7 @@ const CELL_SIZE: f32 = 30.0;
 const SCREEN_X: f32 = COLS as f32 * CELL_SIZE;
 const SCREEN_Y: f32 = ROWS as f32 * CELL_SIZE;
 const DROP_INTERVAL: f32 = 0.5; // Seconds
+const SIDEBAR_WIDTH: f32 = 6.0 * CELL_SIZE;
 
 // ===========================================
 //                 Tetrominos
@@ -32,6 +33,9 @@ enum TetrominoKind {
     L,
 }
 
+// -----
+// color
+// -----
 fn tetromino_color(kind: TetrominoKind) -> Color {
     match kind {
         TetrominoKind::I => Color::from_rgb(0, 240, 240),
@@ -44,6 +48,9 @@ fn tetromino_color(kind: TetrominoKind) -> Color {
     }
 }
 
+// -----
+// cells
+// -----
 fn tetromino_cells(kind: TetrominoKind) -> [(i32, i32); 4] {
     match kind {
         TetrominoKind::I => [(0, 0), (0, 1), (0, 2), (0, 3)],
@@ -56,6 +63,9 @@ fn tetromino_cells(kind: TetrominoKind) -> [(i32, i32); 4] {
     }
 }
 
+// -----
+// random_kind
+// -----
 fn random_kind() -> TetrominoKind {
     match rand::random::<u8>() % 7 {
         0 => TetrominoKind::I,
@@ -68,6 +78,9 @@ fn random_kind() -> TetrominoKind {
     }
 }
 
+// -----
+// Tetromino
+// -----
 struct Tetromino {
     cells: [(i32, i32); 4], // Offsets from tetromino origin (row, col)
     color: Color,
@@ -85,27 +98,43 @@ impl Tetromino {
         }
     }
 
+    // -----
+    // absolute_cells
+    // -----
     fn absolute_cells(&self) -> [(i32, i32); 4] {
         self.cells.map(|(r, c)| (self.row + r, self.col + c))
     }
 
+    // -----
+    // can_move_down
+    // -----
     fn can_move_down(&self, board: &[[Option<Color>; COLS]; ROWS]) -> bool {
         self.absolute_cells()
             .iter()
             .all(|(r, c)| r + 1 < ROWS as i32 && board[(r + 1) as usize][*c as usize].is_none())
     }
+
+    // -----
+    // can_move_left
+    // -----
     fn can_move_left(&self, board: &[[Option<Color>; COLS]; ROWS]) -> bool {
         self.absolute_cells()
             .iter()
             .all(|(r, c)| c - 1 >= 0 && board[*r as usize][(c - 1) as usize].is_none())
     }
 
+    // -----
+    // can_move_right
+    // -----
     fn can_move_right(&self, board: &[[Option<Color>; COLS]; ROWS]) -> bool {
         self.absolute_cells()
             .iter()
             .all(|(r, c)| c + 1 < COLS as i32 && board[*r as usize][(c + 1) as usize].is_none())
     }
 
+    // -----
+    // rotate
+    // -----
     fn rotate(&mut self, board: &[[Option<Color>; COLS]; ROWS]) {
         // 90 degree clockwise rotation
         let rotated: [(i32, i32); 4] = self.cells.map(|(r, c)| (c, -r));
@@ -136,12 +165,18 @@ impl Tetromino {
         // If no kick works, rotation is silently ignored
     }
 
+    // -----
+    // lock
+    // -----
     fn lock(&self, board: &mut [[Option<Color>; COLS]; ROWS]) {
         for (r, c) in self.absolute_cells() {
             board[r as usize][c as usize] = Some(self.color);
         }
     }
 
+    // -----
+    // overlaps
+    // -----
     fn overlaps(&self, board: &[[Option<Color>; COLS]; ROWS]) -> bool {
         self.absolute_cells()
             .iter()
@@ -158,9 +193,13 @@ struct GameState {
     board: [[Option<Color>; COLS]; ROWS],
     game_over: bool,
     score: u32,
+    next: Tetromino,
 }
 
 impl GameState {
+    // -----
+    // new
+    // -----
     fn new() -> Self {
         GameState {
             active: Tetromino::new(random_kind()),
@@ -168,9 +207,13 @@ impl GameState {
             board: [[None; COLS]; ROWS],
             game_over: false,
             score: 0,
+            next: Tetromino::new(random_kind()),
         }
     }
 
+    // -----
+    // clear_lines
+    // -----
     fn clear_lines(&mut self) -> u32 {
         let mut cleared = 0;
         let mut row = ROWS as i32 - 1;
@@ -189,6 +232,26 @@ impl GameState {
         }
         cleared
     }
+
+    // -----
+    // lock_active
+    // -----
+    fn lock_active(&mut self) {
+        self.active.lock(&mut self.board);
+        let cleared = self.clear_lines();
+        self.score += match cleared {
+            1 => 100,
+            2 => 300,
+            3 => 500,
+            4 => 800,
+            _ => 0,
+        };
+        let new_next = Tetromino::new(random_kind());
+        self.active = std::mem::replace(&mut self.next, new_next);
+        if self.active.overlaps(&self.board) {
+            self.game_over = true;
+        }
+    }
 }
 
 // -----
@@ -196,6 +259,9 @@ impl GameState {
 // -----
 // Ggez requires that the EventHandler trait be implemented for GameState
 impl EventHandler for GameState {
+    // -----
+    // update
+    // -----
     fn update(&mut self, ctx: &mut Context) -> GameResult {
         if self.game_over {
             return Ok(());
@@ -207,24 +273,15 @@ impl EventHandler for GameState {
             if self.active.can_move_down(&self.board) {
                 self.active.row += 1;
             } else {
-                self.active.lock(&mut self.board);
-                let cleared = self.clear_lines();
-                self.score += match cleared {
-                    1 => 100,
-                    2 => 300,
-                    3 => 500,
-                    4 => 800,
-                    _ => 0,
-                };
-                self.active = Tetromino::new(random_kind());
-                if self.active.overlaps(&self.board) {
-                    self.game_over = true;
-                }
+                self.lock_active();
             }
         }
         Ok(())
     }
 
+    // -----
+    // draw
+    // -----
     fn draw(&mut self, ctx: &mut Context) -> GameResult {
         let mut canvas = Canvas::from_frame(ctx, Color::BLACK);
         let grid_color = Color::from_rgb(40, 40, 40);
@@ -275,16 +332,42 @@ impl EventHandler for GameState {
             }
         }
 
+        // Game over
         if self.game_over {
             let text = ggez::graphics::Text::new("GAME OVER");
             canvas.draw(&text, DrawParam::default().dest([80.0, SCREEN_Y / 2.0]));
         }
+
+        // Score
         let score_text = ggez::graphics::Text::new(format!("Score: {}", self.score));
         canvas.draw(&score_text, DrawParam::default().dest([4.0, 4.0]));
+
+        // Next piece preview
+        let preview_x = SCREEN_X + CELL_SIZE;
+        let preview_y = CELL_SIZE * 3.0;
+        let label = ggez::graphics::Text::new("Next:");
+        canvas.draw(
+            &label,
+            DrawParam::default().dest([preview_x, preview_y - CELL_SIZE]),
+        );
+        for (r, c) in self.next.cells {
+            let cell_rect = Rect::new(
+                preview_x + c as f32 * CELL_SIZE,
+                preview_y + r as f32 * CELL_SIZE,
+                CELL_SIZE,
+                CELL_SIZE,
+            );
+            let mesh = Mesh::new_rectangle(ctx, DrawMode::fill(), cell_rect, self.next.color)?;
+            canvas.draw(&mesh, DrawParam::default());
+        }
+
         canvas.finish(ctx)?;
         Ok(())
     }
 
+    // -----
+    // key_down_event
+    // -----
     fn key_down_event(
         &mut self,
         _ctx: &mut Context,
@@ -314,6 +397,14 @@ impl EventHandler for GameState {
             Some(KeyCode::Up) => {
                 self.active.rotate(&self.board);
             }
+
+            Some(KeyCode::Space) => {
+                while self.active.can_move_down(&self.board) {
+                    self.active.row += 1;
+                }
+                self.lock_active();
+                self.drop_timer = 0.0;
+            }
             _ => {}
         }
 
@@ -327,7 +418,7 @@ impl EventHandler for GameState {
 fn main() -> GameResult {
     let (ctx, event_loop) = ContextBuilder::new("tetrs", "author")
         .window_setup(conf::WindowSetup::default().title("Tetrs"))
-        .window_mode(conf::WindowMode::default().dimensions(SCREEN_X, SCREEN_Y))
+        .window_mode(conf::WindowMode::default().dimensions(SCREEN_X + SIDEBAR_WIDTH, SCREEN_Y))
         .build()?;
 
     let state = GameState::new();
