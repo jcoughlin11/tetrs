@@ -317,6 +317,43 @@ impl EventHandler for GameState {
             }
         }
 
+        // Calculate ghost piece location
+        let mut ghost_row = self.active.row;
+        loop {
+            let can_fall = self.active.cells.iter().all(|(r, c)| {
+                let nr = ghost_row + r + 1;
+                let nc = self.active.col + c;
+                nr < ROWS as i32 && self.board[nr as usize][nc as usize].is_none()
+            });
+            if can_fall {
+                ghost_row += 1;
+            } else {
+                break;
+            }
+        }
+
+        // Draw ghost piece
+        for (r, c) in self.active.cells {
+            let ar = ghost_row + r;
+            let ac = self.active.col + c;
+            if ar >= 0 && ar < ROWS as i32 && ac >= 0 && ac < COLS as i32 {
+                let cell_rect = Rect::new(
+                    ac as f32 * CELL_SIZE,
+                    ar as f32 * CELL_SIZE,
+                    CELL_SIZE,
+                    CELL_SIZE,
+                );
+                let ghost_color = Color::new(
+                    self.active.color.r,
+                    self.active.color.g,
+                    self.active.color.b,
+                    0.3,
+                );
+                let mesh = Mesh::new_rectangle(ctx, DrawMode::fill(), cell_rect, ghost_color)?;
+                canvas.draw(&mesh, DrawParam::default());
+            }
+        }
+
         // Draw active piece
         for (r, c) in self.active.absolute_cells() {
             if r >= 0 && r < ROWS as i32 && c >= 0 && c < COLS as i32 {
