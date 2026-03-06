@@ -141,6 +141,12 @@ impl Tetromino {
             board[r as usize][c as usize] = Some(self.color);
         }
     }
+
+    fn overlaps(&self, board: &[[Option<Color>; COLS]; ROWS]) -> bool {
+        self.absolute_cells()
+            .iter()
+            .any(|(r, c)| board[*r as usize][*c as usize].is_some())
+    }
 }
 
 // ===========================================
@@ -150,6 +156,7 @@ struct GameState {
     active: Tetromino,
     drop_timer: f32,
     board: [[Option<Color>; COLS]; ROWS],
+    game_over: bool,
 }
 
 impl GameState {
@@ -158,6 +165,7 @@ impl GameState {
             active: Tetromino::new(random_kind()),
             drop_timer: 0.0,
             board: [[None; COLS]; ROWS],
+            game_over: false,
         }
     }
 
@@ -184,6 +192,9 @@ impl GameState {
 // Ggez requires that the EventHandler trait be implemented for GameState
 impl EventHandler for GameState {
     fn update(&mut self, ctx: &mut Context) -> GameResult {
+        if self.game_over {
+            return Ok(());
+        }
         let dt = ctx.time.delta().as_secs_f32();
         self.drop_timer += dt;
         if self.drop_timer >= DROP_INTERVAL {
@@ -194,6 +205,9 @@ impl EventHandler for GameState {
                 self.active.lock(&mut self.board);
                 self.clear_lines();
                 self.active = Tetromino::new(random_kind());
+                if self.active.overlaps(&self.board) {
+                    self.game_over = true;
+                }
             }
         }
         Ok(())
@@ -249,6 +263,10 @@ impl EventHandler for GameState {
             }
         }
 
+        if self.game_over {
+            let text = ggez::graphics::Text::new("GAME OVER");
+            canvas.draw(&text, DrawParam::default().dest([80.0, SCREEN_Y / 2.0]));
+        }
         canvas.finish(ctx)?;
         Ok(())
     }
