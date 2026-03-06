@@ -157,6 +157,7 @@ struct GameState {
     drop_timer: f32,
     board: [[Option<Color>; COLS]; ROWS],
     game_over: bool,
+    score: u32,
 }
 
 impl GameState {
@@ -166,10 +167,12 @@ impl GameState {
             drop_timer: 0.0,
             board: [[None; COLS]; ROWS],
             game_over: false,
+            score: 0,
         }
     }
 
-    fn clear_lines(&mut self) {
+    fn clear_lines(&mut self) -> u32 {
+        let mut cleared = 0;
         let mut row = ROWS as i32 - 1;
         while row >= 0 {
             let full = self.board[row as usize].iter().all(|cell| cell.is_some());
@@ -179,10 +182,12 @@ impl GameState {
                     self.board[r] = self.board[r - 1];
                 }
                 self.board[0] = [None; COLS];
+                cleared += 1;
             } else {
                 row -= 1;
             }
         }
+        cleared
     }
 }
 
@@ -203,7 +208,14 @@ impl EventHandler for GameState {
                 self.active.row += 1;
             } else {
                 self.active.lock(&mut self.board);
-                self.clear_lines();
+                let cleared = self.clear_lines();
+                self.score += match cleared {
+                    1 => 100,
+                    2 => 300,
+                    3 => 500,
+                    4 => 800,
+                    _ => 0,
+                };
                 self.active = Tetromino::new(random_kind());
                 if self.active.overlaps(&self.board) {
                     self.game_over = true;
@@ -267,6 +279,8 @@ impl EventHandler for GameState {
             let text = ggez::graphics::Text::new("GAME OVER");
             canvas.draw(&text, DrawParam::default().dest([80.0, SCREEN_Y / 2.0]));
         }
+        let score_text = ggez::graphics::Text::new(format!("Score: {}", self.score));
+        canvas.draw(&score_text, DrawParam::default().dest([4.0, 4.0]));
         canvas.finish(ctx)?;
         Ok(())
     }
